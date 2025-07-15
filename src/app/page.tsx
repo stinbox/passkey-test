@@ -1,103 +1,292 @@
-import Image from "next/image";
+"use client";
+import {
+  PublicKeyCredentialCreationOptionsJSON,
+  startRegistration,
+  startAuthentication,
+  RegistrationResponseJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  AuthenticationResponseJSON,
+} from "@simplewebauthn/browser";
+import useSWR from "swr";
+
+async function getRegistrationOptions(email: string) {
+  const response = await fetch("/api/auth/sign-up-with-passkey/options", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+    }),
+  });
+
+  const data = await response.json();
+
+  return data as {
+    registrationOptions: PublicKeyCredentialCreationOptionsJSON;
+    challengeId: string;
+  };
+}
+
+async function sendRegistrationChallengeResponse(
+  challengeId: string,
+  registrationResponse: RegistrationResponseJSON,
+  name: string,
+  email: string,
+) {
+  const response = await fetch(`/api/auth/sign-up-with-passkey/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      challengeId: challengeId,
+      credential: registrationResponse,
+      name: name,
+      email: email,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to verify registration response");
+  }
+}
+
+async function signUpWithPasskey(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  const formData = new FormData(event.currentTarget);
+  const name = formData.get("name") as string;
+  const email = formData.get("email") as string;
+
+  const { registrationOptions, challengeId } = await getRegistrationOptions(
+    email,
+  );
+  const registrationResponse = await startRegistration({
+    optionsJSON: registrationOptions,
+  });
+
+  await sendRegistrationChallengeResponse(
+    challengeId,
+    registrationResponse,
+    name,
+    email,
+  );
+  alert("Registration successful!");
+}
+
+async function getAuthenticationOptions(email: string) {
+  const response = await fetch("/api/auth/sign-in-with-passkey/options", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+    }),
+  });
+
+  const data = await response.json();
+
+  return data as {
+    authenticationOptions: PublicKeyCredentialRequestOptionsJSON;
+    challengeId: string;
+  };
+}
+
+async function sendAuthenticationChallengeResponse(
+  challengeId: string,
+  authenticationResponse: AuthenticationResponseJSON,
+) {
+  const response = await fetch(`/api/auth/sign-in-with-passkey/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      challengeId: challengeId,
+      credential: authenticationResponse,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to verify authentication response");
+  }
+}
+
+async function signInWithPasskey(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  const formData = new FormData(event.currentTarget);
+  const email = formData.get("email") as string;
+
+  const { authenticationOptions, challengeId } = await getAuthenticationOptions(
+    email,
+  );
+  const authenticationResponse = await startAuthentication({
+    optionsJSON: authenticationOptions,
+  });
+
+  await sendAuthenticationChallengeResponse(
+    challengeId,
+    authenticationResponse,
+  );
+  alert("Login successful!");
+}
+
+async function getAdditionalRegistrationOptions() {
+  const response = await fetch("/api/auth/add-passkey/options", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  const data = await response.json();
+
+  return data as {
+    registrationOptions: PublicKeyCredentialCreationOptionsJSON;
+    challengeId: string;
+  };
+}
+
+async function sendAdditionalRegistrationChallengeResponse(
+  challengeId: string,
+  registrationResponse: RegistrationResponseJSON,
+) {
+  const response = await fetch(`/api/auth/add-passkey/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      challengeId: challengeId,
+      credential: registrationResponse,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to verify registration response");
+  }
+}
+
+async function addPasskey(event: React.FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  const { registrationOptions, challengeId } =
+    await getAdditionalRegistrationOptions();
+  const registrationResponse = await startRegistration({
+    optionsJSON: registrationOptions,
+  });
+
+  await sendAdditionalRegistrationChallengeResponse(
+    challengeId,
+    registrationResponse,
+  );
+  alert("Registration successful!");
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const passkeysQuery = useSWR("/api/auth/passkeys", async () => {
+    const response = await fetch("/api/auth/passkeys");
+    if (!response.ok) {
+      throw new Error("Failed to fetch passkeys");
+    }
+    return (await response.json()) as {
+      id: string;
+      aaguid: string;
+      counter: number;
+      createdAt: string;
+      lastUsedAt: string | null;
+    }[];
+  });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+  return (
+    <div>
+      <form
+        className="flex flex-col gap-4 p-8 max-w-xl"
+        onSubmit={signUpWithPasskey}
+      >
+        <label className="flex flex-col gap-2">
+          <span>name</span>
+          <input
+            className="border rounded p-2"
+            type="text"
+            name="name"
+            placeholder="Enter your name"
+            required
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+        </label>
+        <label className="flex flex-col gap-2">
+          <span>email</span>
+          <input
+            className="border rounded p-2"
+            type="email"
+            name="email"
+            placeholder="Enter your email"
+            required
           />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
+        </label>
+        <button className="rounded-full border p-2 cursor-pointer">
+          パスキーでアカウント登録
+        </button>
+      </form>
+      <hr className="my-8" />
+      <form
+        className="flex flex-col gap-4 p-8 max-w-xl"
+        onSubmit={signInWithPasskey}
+      >
+        <label className="flex flex-col gap-2">
+          <span>email</span>
+          <input
+            className="border rounded p-2"
+            type="email"
+            name="email"
+            placeholder="Enter your email"
+            required
           />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </label>
+        <button className="rounded-full border p-2 cursor-pointer">
+          パスキーでログイン
+        </button>
+      </form>
+      <hr className="my-8" />
+      <form className="flex flex-col gap-4 p-8 max-w-xl" onSubmit={addPasskey}>
+        <button className="rounded-full border p-2 cursor-pointer">
+          パスキーを追加する
+        </button>
+      </form>
+      <hr className="my-8" />
+      <h2 className="text-2xl font-bold mb-4">Registered Passkeys</h2>
+      {passkeysQuery.isLoading && <p>Loading...</p>}
+      {passkeysQuery.error && (
+        <p className="text-red-500">
+          Error loading passkeys: {(passkeysQuery.error as Error).message}
+        </p>
+      )}
+      <ul className="list-disc pl-8">
+        {passkeysQuery.data?.map((passkey) => (
+          <li key={passkey.id} className="mb-2">
+            <div>
+              <strong>AAGUID:</strong> {passkey.aaguid}
+            </div>
+            <div>
+              <strong>Counter:</strong> {passkey.counter}
+            </div>
+            <div>
+              <strong>Created At:</strong>{" "}
+              {new Date(passkey.createdAt).toLocaleString()}
+            </div>
+            <div>
+              <strong>Last Used At:</strong>{" "}
+              {passkey.lastUsedAt
+                ? new Date(passkey.lastUsedAt).toLocaleString()
+                : "Never"}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <hr className="my-8" />
     </div>
   );
 }

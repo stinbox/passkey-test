@@ -8,6 +8,11 @@ import {
   AuthenticationResponseJSON,
 } from "@simplewebauthn/browser";
 import useSWR from "swr";
+import _aaguids from "../aaguid.json";
+const aaguids: Record<
+  string,
+  { name: string; icon_dark?: string; icon_light?: string }
+> = _aaguids;
 
 async function getRegistrationOptions(email: string) {
   const response = await fetch("/api/auth/sign-up-with-passkey/options", {
@@ -268,7 +273,9 @@ export default function Home() {
         {passkeysQuery.data?.map((passkey) => (
           <li key={passkey.id} className="mb-2">
             <div>
-              <strong>AAGUID:</strong> {passkey.aaguid}
+              <img src={aaguids[passkey.aaguid]?.icon_dark} />
+              <strong>AAGUID:</strong>{" "}
+              {aaguids[passkey.aaguid]?.name || passkey.aaguid}
             </div>
             <div>
               <strong>Counter:</strong> {passkey.counter}

@@ -30,7 +30,7 @@
     "eslint-config-next": "15.3.5",
     "prisma": "^6.11.1",
     "tailwindcss": "^4.1.11",
-    "typescript": "^5"
+    "typescript": "^5.8.3"
   },
   "packageManager": "pnpm@8.6.1+sha1.435b3c83c7de5c455ad80fd63ee7ecf3b67b949b"
 }
